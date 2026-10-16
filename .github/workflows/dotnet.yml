@@ -1,0 +1,23 @@
+name: Gateway validation
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gateway
+          POSTGRES_PASSWORD: local-ci-only
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres -d gateway" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GATEWAY_TEST_POSTGRES: Host=127.0.0.1;Database=gateway;Username=postgres;Password=local-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.426
+      - run: dotnet restore Gateway.sln --locked-mode
+      - run: dotnet test Gateway.sln --no-restore --nologo
+      - run: python3 scripts/smoke.py

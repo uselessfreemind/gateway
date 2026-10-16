@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+config/site.json
+config/*.local.json
+
+**/__pycache__/
+*.pyc
