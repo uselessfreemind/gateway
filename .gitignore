@@ -10,3 +10,10 @@ config/*.local.json
 
 **/__pycache__/
 *.pyc
+native/build*/
+native/winui/packages/
+native/winui/out/
+native/winui/obj/
+native/config/site.json
+**/.vs/
+*.user

@@ -1,0 +1,25 @@
+{
+  "database": "data/scada-native.db",
+  "queueCapacity": 100000,
+  "ioThreads": 4,
+  "controllers": [
+    {
+      "id": "cj2-001", "protocol": "FinsUdp", "host": "192.168.10.11", "port": 9600,
+      "intervalMs": 10, "timeoutMs": 100,
+      "sourceNode": 100, "destinationNode": 11, "lowWordFirst": true,
+      "tags": [
+        { "id": "temperature", "address": "D:100", "type": "Int16", "svid": 1001, "scale": 0.1, "unit": "C" },
+        { "id": "running", "address": "CIO:10.3", "type": "Bool", "svid": 1002 }
+      ]
+    },
+    {
+      "id": "nx-001", "protocol": "EtherNetIp", "host": "192.168.10.12", "port": 44818,
+      "intervalMs": 10, "timeoutMs": 100,
+      "tags": [
+        { "id": "temperature", "address": "Temperature", "type": "Float32", "svid": 2001, "unit": "C" },
+        { "id": "pressure", "address": "Process.Pressure[0]", "type": "Float32", "svid": 2002, "unit": "kPa" }
+      ]
+    }
+  ],
+  "secs": { "enabled": false, "mode": "Passive", "host": "127.0.0.1", "port": 5000, "deviceId": 0, "eventMs": 1000 }
+}

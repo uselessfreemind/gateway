@@ -1,0 +1,11 @@
+{
+  "database": "data/scada-demo.db",
+  "controllers": [
+    { "id": "demo", "protocol": "Simulated", "intervalMs": 10,
+      "tags": [
+        { "id": "temperature", "type": "Float64", "svid": 1, "unit": "C" },
+        { "id": "pressure", "type": "Float64", "svid": 2, "unit": "kPa" }
+      ]
+    }
+  ]
+}

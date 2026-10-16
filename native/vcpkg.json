@@ -1,0 +1,10 @@
+{
+  "name": "scada-native",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "asio",
+    "nlohmann-json",
+    "sqlite3"
+  ],
+  "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0"
+}
