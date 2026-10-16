@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real UDP/TCP FINS, CIP and HSMS tests against the compiled C++ engine."""
 import asyncio
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -105,7 +106,7 @@ async def run(binary):
                 assert report['archiveError']=='',report['archiveError']
                 assert all(c['scans']>0 and c['failedReads']==0 for c in report['controllers']),report['controllers']
                 values={(s['controller'],s['tag']):s for s in report['samples']}
-                with sqlite3.connect(database) as db:
+                with contextlib.closing(sqlite3.connect(database)) as db:
                     count=db.execute('SELECT COUNT(*) FROM (SELECT controller,tag FROM native_samples GROUP BY controller,tag)').fetchone()[0]
                     assert count==1400,count
                     fins_value=db.execute("SELECT value FROM native_samples WHERE controller='plc0' AND tag='t699' ORDER BY id DESC LIMIT 1").fetchone()[0]

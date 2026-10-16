@@ -19,6 +19,15 @@ jobs:
       - name: Compile core, run protocol tests and build WinUI 3
         shell: pwsh
         run: ./native/scripts/build-windows.ps1 -Configuration Release
+      - name: Preserve CTest diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-CTest-diagnostics
+          path: |
+            native/build-windows/ctest-results.xml
+            native/build-windows/Testing/Temporary/*.log
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: success()
         with:

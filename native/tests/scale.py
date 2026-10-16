@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Optional 500-controller network topology stress. Reports, never promises, 10 ms timing."""
 import asyncio
+import contextlib
 import json
 from pathlib import Path
 import sqlite3
@@ -38,7 +39,7 @@ async def run(binary):
             assert all(s['scans']>=1 for s in states),sum(s['scans']>=1 for s in states)
             assert report['archiveError']=='',report['archiveError']
             assert all(s['failedReads']==0 for s in states),sum(s['failedReads'] for s in states)
-            with sqlite3.connect(root/'scale.db') as db:
+            with contextlib.closing(sqlite3.connect(root/'scale.db')) as db:
                 distinct=db.execute('SELECT COUNT(*) FROM (SELECT controller,tag FROM native_samples GROUP BY controller,tag)').fetchone()[0]
                 assert distinct==350000,distinct
                 assert db.execute("SELECT value FROM native_samples WHERE controller='plc499' AND tag='t699' ORDER BY id DESC LIMIT 1").fetchone()[0]>89
