@@ -1,6 +1,7 @@
 #include "scada/engine.hpp"
 #include "scada/secs.hpp"
 #include <cmath>
+#include <iostream>
 #ifdef _WIN32
 #include <mmsystem.h>
 #endif
@@ -67,6 +68,8 @@ void Engine::stop() {
     if (!started_)
         return;
     stopping_ = true;
+    if (config_.diagnostics)
+        std::clog << "Shutdown: cancelling network operations\n" << std::flush;
     for (std::size_t i = 0; i < clients_.size(); ++i) {
         auto client = clients_[i];
         auto timer = timers_[i];
@@ -80,11 +83,17 @@ void Engine::stop() {
         asio::post(io_, [server] { server->close(); });
     }
     work_.reset();
+    if (config_.diagnostics)
+        std::clog << "Shutdown: joining I/O workers\n" << std::flush;
     for (auto &t : threads_)
         if (t.joinable())
             t.join();
     threads_.clear();
+    if (config_.diagnostics)
+        std::clog << "Shutdown: draining archive, queued=" << queue_.size() << "\n" << std::flush;
     queue_.finish();
+    if (config_.diagnostics)
+        std::clog << "Shutdown: archive drained\n" << std::flush;
 #ifdef _WIN32
     if (timer_resolution_) {
         timeEndPeriod(1);

@@ -45,6 +45,7 @@ struct Config {
     std::string database{"data/scada-native.db"};
     std::size_t queue_capacity{100000};
     unsigned io_threads{4};
+    bool diagnostics{};
     std::vector<Controller> controllers;
     SecsConfig secs;
 };

@@ -50,16 +50,21 @@ int main(int argc, char **argv) {
         auto config = demo ? scada::demo_config(controllers, tags, interval) : scada::load_config(path);
         if (!database.empty())
             config.database = database;
+        const bool diagnostics = config.diagnostics;
         scada::Engine engine(std::move(config));
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
         engine.start();
+        if (diagnostics)
+            std::clog << "Gateway started\n" << std::flush;
         auto start = std::chrono::steady_clock::now();
         while (!interrupted &&
                (seconds == 0 || std::chrono::steady_clock::now() - start < std::chrono::seconds(seconds))) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         engine.stop();
+        if (diagnostics)
+            std::clog << "Gateway stopped; writing summary\n" << std::flush;
         auto report = engine.snapshot();
         report["archiveRows"] = engine.archived_rows();
         if (!summary.empty()) {

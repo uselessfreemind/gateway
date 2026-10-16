@@ -82,7 +82,7 @@ async def run(binary):
             for i in range(2):
                 controllers.append({'id':f'plc{i}','protocol':'FinsUdp' if i==0 else 'EtherNetIp','host':'127.0.0.1','port':fins_port if i==0 else cip_port,'intervalMs':10,'timeoutMs':1000,
                     'tags':[{'id':f't{j}','address':f'D:{j}' if i==0 else f'Tag{j}','type':'UInt16' if i==0 else 'Float32','svid':i*700+j+1} for j in range(700)]})
-            config={'database':str(database),'queueCapacity':100000,'controllers':controllers,'secs':{'enabled':True,'mode':'Active' if active else 'Passive','port':hsms_port,'eventMs':50}}
+            config={'database':str(database),'queueCapacity':2800,'diagnostics':True,'controllers':controllers,'secs':{'enabled':True,'mode':'Active' if active else 'Passive','port':hsms_port,'eventMs':50}}
             file=root/'site.json';file.write_text(json.dumps(config));summary=root/'summary.json'
             accepted=asyncio.Queue()
             async def accept(r,w):await accepted.put((r,w))
@@ -100,7 +100,16 @@ async def run(binary):
                 await asyncio.sleep(.15)
                 await host_checks(reader,writer,active)
                 writer.close();await writer.wait_closed()
-                output=await asyncio.wait_for(process.communicate(),15)
+                # Keep communication alive on timeout so shutdown diagnostics are not lost.
+                communication=asyncio.create_task(process.communicate())
+                try:
+                    output=await asyncio.wait_for(asyncio.shield(communication),15)
+                except TimeoutError:
+                    status=process.returncode
+                    if status is None:process.kill()
+                    captured=await asyncio.wait_for(communication,5)
+                    raise AssertionError(f'Gateway exit timeout (returncode before kill={status}). '
+                                         f'Diagnostics:\n{captured[0].decode(errors="replace")}')
                 assert process.returncode==0,output
                 report=json.loads(summary.read_text());assert report['totalLatest']==1400,report['totalLatest']
                 assert report['archiveError']=='',report['archiveError']

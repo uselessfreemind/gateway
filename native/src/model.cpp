@@ -75,6 +75,7 @@ Config load_config(const std::string &path) {
     input >> j;
     Config out;
     out.database = j.value("database", out.database);
+    out.diagnostics = j.value("diagnostics", false);
     out.queue_capacity = j.value("queueCapacity", out.queue_capacity);
     out.io_threads = j.value("ioThreads", out.io_threads);
     for (auto &item : j.at("controllers")) {
