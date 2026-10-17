@@ -29,7 +29,14 @@
     <Manifest><AdditionalManifestFiles>app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest>
   </ItemDefinitionGroup>
   <ItemGroup><ApplicationDefinition Include="App.xaml" /><Page Include="MainWindow.xaml" /><Midl Include="MainWindow.idl" /></ItemGroup>
-  <ItemGroup><ClInclude Include="pch.h" /><ClInclude Include="App.xaml.h" /><ClInclude Include="MainWindow.xaml.h" /><ClCompile Include="App.xaml.cpp" /><ClCompile Include="MainWindow.xaml.cpp" /></ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="App.xaml.h"><DependentUpon>App.xaml</DependentUpon></ClInclude>
+    <ClInclude Include="MainWindow.xaml.h"><DependentUpon>MainWindow.xaml</DependentUpon></ClInclude>
+    <ClCompile Include="App.xaml.cpp"><DependentUpon>App.xaml</DependentUpon></ClCompile>
+    <ClCompile Include="MainWindow.xaml.cpp"><DependentUpon>MainWindow.xaml</DependentUpon></ClCompile>
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+  </ItemGroup>
   <ItemGroup><None Include="packages.config" /><None Include="app.manifest" /></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
