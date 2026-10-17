@@ -13,7 +13,7 @@ using namespace Windows::Data::Json;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using namespace Microsoft::UI::Xaml::Media;
-using namespace Microsoft::UI::Xaml::Shapes;
+namespace Shapes = winrt::Microsoft::UI::Xaml::Shapes;
 namespace winrt::Scada::Desktop::implementation {
 static std::string take(char *p) {
     if (!p)
@@ -343,7 +343,7 @@ void MainWindow::DrawChart() {
     description << L"Range " << min << L" to " << max << L"  •  " << points_.Size()
                 << L" archive buckets (min/max whiskers, mean line)";
     TrendSummary().Text(description.str());
-    Polyline line;
+    Shapes::Polyline line;
     line.Stroke(SolidColorBrush(Microsoft::UI::Colors::DodgerBlue()));
     line.StrokeThickness(2);
     PointCollection points;
@@ -355,7 +355,7 @@ void MainWindow::DrawChart() {
             line.Points(points);
             canvas.Children().Append(line);
         }
-        line = Polyline();
+        line = Shapes::Polyline();
         line.Stroke(SolidColorBrush(Microsoft::UI::Colors::DodgerBlue()));
         line.StrokeThickness(2);
         points = PointCollection();
@@ -376,7 +376,7 @@ void MainWindow::DrawChart() {
         auto y = [&](double v) {
             return static_cast<float>(8 + (max - v) / (max - min) * std::max(1.0, height - 16));
         };
-        Line whisker;
+        Shapes::Line whisker;
         whisker.X1(x);
         whisker.X2(x);
         whisker.Y1(y(o.GetNamedNumber(L"min")));

@@ -1,5 +1,5 @@
 #pragma once
-#include "App.g.h"
+#include "App.xaml.g.h"
 #include "pch.h"
 namespace winrt::Scada::Desktop::implementation {
 struct App : AppT<App> {
