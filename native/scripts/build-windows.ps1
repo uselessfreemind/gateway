@@ -1,11 +1,19 @@
 param(
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
-    [string]$VcpkgRoot = $env:VCPKG_ROOT
+    [string]$VcpkgRoot = $env:VCPKG_ROOT,
+    [ValidateSet('All','Native','Test','Desktop')][string]$Phase = 'All'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
+$Build = Join-Path $Root 'build-windows'
+$LogDir = Join-Path $Build 'diagnostics'
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+$script:CommandIndex = 0
 function Run([string]$Exe, [string[]]$Arguments) {
-    & $Exe @Arguments
+    $script:CommandIndex++
+    $Tool = [System.IO.Path]::GetFileNameWithoutExtension($Exe)
+    $Log = Join-Path $LogDir ("{0}-{1:D2}-{2}.log" -f $Phase, $script:CommandIndex, $Tool)
+    & $Exe @Arguments 2>&1 | Tee-Object -FilePath $Log
     $Code = $LASTEXITCODE
     if ($Code -ne 0) {
         # Report the actual failing tests instead of only the wrapper's exit code.
@@ -32,25 +40,46 @@ function Run([string]$Exe, [string[]]$Arguments) {
                 }
             }
         }
-        throw "$Exe failed with exit code $Code"
+        if ($Exe -ne 'ctest' -and $env:GITHUB_ACTIONS -eq 'true') {
+            $Errors = @(Get-Content $Log | Where-Object { $_ -match '(?i)\berror\b|CMake Error|Exception' } | Select-Object -Unique -First 8)
+            if ($Errors.Count -eq 0) { $Errors = @(Get-Content $Log -Tail 12) }
+            foreach ($Line in $Errors) {
+                $Text = ([string]$Line).Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                Write-Host "::error title=Windows build failure::$Text"
+            }
+            if ($env:GITHUB_STEP_SUMMARY) {
+                @("### Failed phase: $Phase / $Tool", '', '```text') + $Errors + @('```', '') |
+                    Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            }
+        }
+        throw "$Exe failed with exit code $Code (log: $Log)"
     }
 }
-if (-not $VcpkgRoot) { $VcpkgRoot = Join-Path $env:LOCALAPPDATA 'ScadaTools\vcpkg' }
-if (-not (Test-Path (Join-Path $VcpkgRoot '.git'))) {
-    Run 'git' @('clone','--branch','2025.06.13','--depth','1','https://github.com/microsoft/vcpkg.git',$VcpkgRoot)
+if ($Phase -in @('All','Native')) {
+    if (-not $VcpkgRoot) { $VcpkgRoot = Join-Path $env:LOCALAPPDATA 'ScadaTools\vcpkg' }
+    if (-not (Test-Path (Join-Path $VcpkgRoot '.git'))) {
+        Run 'git' @('clone','--branch','2025.06.13','--depth','1','https://github.com/microsoft/vcpkg.git',$VcpkgRoot)
+    }
+    if (-not (Test-Path (Join-Path $VcpkgRoot 'vcpkg.exe'))) {
+        Run (Join-Path $VcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
+    }
+    Run 'cmake' @('-S',$Root,'-B',$Build,'-G','Visual Studio 17 2022','-A','x64',
+        "-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot/scripts/buildsystems/vcpkg.cmake",'-DSCADA_USE_VCPKG=ON','-DVCPKG_TARGET_TRIPLET=x64-windows-static-md')
+    Run 'cmake' @('--build',$Build,'--config',$Configuration,'--parallel','2')
 }
-if (-not (Test-Path (Join-Path $VcpkgRoot 'vcpkg.exe'))) {
-    Run (Join-Path $VcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
+if ($Phase -in @('All','Test')) {
+    Run 'ctest' @('--test-dir',$Build,'-C',$Configuration,'--output-on-failure','--output-junit',(Join-Path $Build 'ctest-results.xml'))
 }
-$Build = Join-Path $Root 'build-windows'
-Run 'cmake' @('-S',$Root,'-B',$Build,'-G','Visual Studio 17 2022','-A','x64',
-    "-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot/scripts/buildsystems/vcpkg.cmake",'-DSCADA_USE_VCPKG=ON','-DVCPKG_TARGET_TRIPLET=x64-windows-static-md')
-Run 'cmake' @('--build',$Build,'--config',$Configuration,'--parallel','2')
-Run 'ctest' @('--test-dir',$Build,'-C',$Configuration,'--output-on-failure','--output-junit',(Join-Path $Build 'ctest-results.xml'))
-$ProjectDir = Join-Path $Root 'winui\Scada.Desktop'
-Run 'nuget' @('restore',(Join-Path $ProjectDir 'packages.config'),'-PackagesDirectory',(Join-Path $Root 'winui\packages'),'-NonInteractive')
-$Vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-$Msbuild = & $Vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
-if (-not $Msbuild) { throw 'Visual Studio 2022 MSBuild with C++ and WinUI tools is required.' }
-Run $Msbuild @((Join-Path $ProjectDir 'Scada.Desktop.vcxproj'),'/m:2',"/p:Configuration=$Configuration",'/p:Platform=x64',"/p:NativeBuildDir=$Build")
-Write-Host "Desktop executable: $Root\winui\out\x64\$Configuration\Scada.Desktop.exe"
+if ($Phase -in @('All','Desktop')) {
+    $ProjectDir = Join-Path $Root 'winui\Scada.Desktop'
+    Run 'nuget' @('restore',(Join-Path $ProjectDir 'packages.config'),'-PackagesDirectory',(Join-Path $Root 'winui\packages'),'-NonInteractive')
+    $Vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $Msbuild = & $Vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+    if (-not $Msbuild) { throw 'Visual Studio 2022 MSBuild with C++ and WinUI tools is required.' }
+    Run $Msbuild @((Join-Path $ProjectDir 'Scada.Desktop.vcxproj'),'/m:2',"/p:Configuration=$Configuration",'/p:Platform=x64',"/p:NativeBuildDir=$Build")
+    Write-Host "Desktop executable: $Root\winui\out\x64\$Configuration\Scada.Desktop.exe"
+}
+if ($env:GITHUB_STEP_SUMMARY) {
+    "- Windows phase **$Phase** completed successfully." |
+        Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+}
