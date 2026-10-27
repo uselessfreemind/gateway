@@ -52,6 +52,9 @@ app.Use(async (context, next) =>
     }
     await next(context);
 });
+// Serve the example viewer after API-key middleware so it follows the same access policy.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.MapGet("/health", (DataState state, SampleQueue queue, SecsState secs) => Results.Ok(new
 {
     status = state.ArchiveError == null ? "running" : "archive-failed",

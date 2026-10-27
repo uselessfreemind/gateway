@@ -1,6 +1,6 @@
 # Omron SCADA gateway
 
-C# / .NET 8 backend for read-only Omron acquisition, live web-viewer data, calendar-month archives, and equipment-side SECS/HSMS communication. The UI is intentionally deferred.
+C# / .NET 8 backend for read-only Omron acquisition, live web-viewer data, calendar-month archives, and equipment-side SECS/HSMS communication. An example browser viewer is included (simulated data; see below).
 
 ## Run
 
@@ -67,4 +67,8 @@ dotnet test Gateway.sln
 python scripts/smoke.py --postgres
 ```
 
-See [API details](docs/api.md) and [validation results](docs/validation.md). No UI, physical-hardware acceptance, full SEMI E30 certification or production throughput guarantee is claimed.
+See [API details](docs/api.md) and [validation results](docs/validation.md). No live-data UI integration, physical-hardware acceptance, full SEMI E30 certification or production throughput guarantee is claimed.
+
+## Example browser viewer
+
+After starting the service, open `http://127.0.0.1:5080/`. The read-only System B process overview includes a **Trend** button opening three pages: values, flow charts, and pressure/temperature charts. All displayed data is illustrative; the viewer is not yet connected to PLC APIs. See [viewer usage and access policy](docs/web-viewer.md).
