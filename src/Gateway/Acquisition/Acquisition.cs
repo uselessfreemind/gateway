@@ -6,6 +6,16 @@ namespace Gateway.Acquisition;
 
 public sealed record Sample(string ControllerId, string TagId, uint Svid, long TimestampMs, double? Value, string Quality, string? Error);
 public sealed record ControllerStatus(string Id, long? LastAttemptMs, long? LastSuccessMs, double LastScanMs, long CompletedScans, long FailedReads, long Overruns);
+public sealed record ConnectionStatus(string State, int RetryAttempts, string? LastError);
+public sealed class SamplingControl
+{
+    private readonly object gate = new();
+    private readonly Dictionary<string, CancellationTokenSource> workers = new();
+    public ConcurrentDictionary<string, ConnectionStatus> Connections { get; } = new();
+    public CancellationToken Token(string id) { lock (gate) { if (!workers.TryGetValue(id, out var c)) workers[id] = c = new(); return c.Token; } }
+    public void Retry(string id) { lock (gate) { if (workers.TryGetValue(id, out var old)) { workers[id] = new(); old.Cancel(); old.Dispose(); } Connections[id] = new("Restarting", 0, null); } }
+    public void RestartAll(IEnumerable<string> ids) { lock (gate) { foreach (var id in ids) Retry(id); } }
+}
 public sealed class DataState
 {
     public ConcurrentDictionary<uint, Sample> Latest { get; } = new();
@@ -19,16 +29,28 @@ public sealed class SampleQueue(GatewayOptions options)
     public Channel<Sample> Channel { get; } = System.Threading.Channels.Channel.CreateBounded<Sample>(new BoundedChannelOptions(options.QueueCapacity)
     { FullMode = BoundedChannelFullMode.Wait, SingleReader = true, SingleWriter = false });
 }
-public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue, DataState state, ILogger<AcquisitionService> logger) : BackgroundService
+public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue, DataState state, SamplingControl control, ILogger<AcquisitionService> logger) : BackgroundService
 {
     private readonly SemaphoreSlim concurrency = new(options.MaxConcurrentPolls);
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.WhenAll(options.Controllers.Select(c => Poll(c, stoppingToken)));
     }
-    private async Task Poll(ControllerOptions c, CancellationToken token)
+    private async Task Poll(ControllerOptions c, CancellationToken shutdown)
     {
-        await using IControllerClient client = c.Protocol == ControllerProtocol.FinsUdp ? new FinsClient(c) : new EtherNetIpClient(c);
+        while (!shutdown.IsCancellationRequested)
+        {
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(shutdown, control.Token(c.Id));
+            try { await PollSession(c, lifetime.Token); }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        }
+    }
+    private async Task PollSession(ControllerOptions c, CancellationToken token)
+    {
+        IControllerClient CreateClient() => c.Protocol == ControllerProtocol.FinsUdp ? new FinsClient(c) : new EtherNetIpClient(c);
+        var client = CreateClient();
+        var failures = 0;
+        control.Connections[c.Id] = new("Connecting", 0, null);
         var plan = ReadPlan.Create(c);
         long completed = 0, failed = 0, overruns = 0;
         long? lastSuccess = null;
@@ -43,6 +65,7 @@ public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue
                 var attempt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 await concurrency.WaitAsync(token);
                 var samples = new List<Sample>(c.Tags.Count);
+                string? transportError = null;
                 try
                 {
                     for (var index = 0; index < plan.Count; index++)
@@ -57,6 +80,7 @@ public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue
                             var error = ex is OperationCanceledException ? "Read timeout" : ex.Message;
                             reads = plan[index].Select(t => new TagRead(t, null, error)).ToArray();
                             interrupted = true;
+                            transportError = error;
                         }
                         foreach (var read in reads)
                         {
@@ -79,6 +103,18 @@ public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue
                     }
                 }
                 finally { concurrency.Release(); }
+                if (transportError != null)
+                {
+                    failures++;
+                    control.Connections[c.Id] = new(failures >= 4 ? "Aborted" : "Reconnecting", Math.Min(3, failures - 1), transportError);
+                    await client.DisposeAsync();
+                    client = CreateClient();
+                }
+                else
+                {
+                    failures = 0;
+                    control.Connections[c.Id] = new("Connected", 0, null);
+                }
                 foreach (var sample in samples)
                 {
                     await queue.Channel.Writer.WriteAsync(sample, token);
@@ -87,11 +123,18 @@ public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue
                 watch.Stop(); completed++;
                 if (watch.ElapsedMilliseconds > c.PollIntervalMs) overruns++;
                 state.Controllers[c.Id] = new(c.Id, attempt, lastSuccess, watch.Elapsed.TotalMilliseconds, completed, failed, overruns);
+                if (failures >= 4) await Task.Delay(Timeout.Infinite, token);
+                if (failures > 0)
+                {
+                    await Task.Delay(1000, token);
+                    control.Connections[c.Id] = new("Reconnecting", failures, transportError);
+                }
                 // Missed deadlines never accumulate into overlapping scans.
                 await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(1, c.PollIntervalMs - watch.Elapsed.TotalMilliseconds)), token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex) { logger.LogCritical(ex, "Controller worker {Controller} failed", c.Id); throw; }
+        finally { await client.DisposeAsync(); }
     }
 }

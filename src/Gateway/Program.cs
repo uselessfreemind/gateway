@@ -29,6 +29,7 @@ options.Validate();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<DataState>();
+builder.Services.AddSingleton<SamplingControl>();
 builder.Services.AddSingleton<SecsState>();
 builder.Services.AddSingleton<SampleQueue>();
 builder.Services.AddSingleton<IArchiveStore>(_ => options.ArchiveProvider == "Postgres" ? new PostgresArchiveStore(options) : new ArchiveStore(options));
@@ -50,6 +51,8 @@ app.Use(async (context, next) =>
         if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), SHA256.HashData(Encoding.UTF8.GetBytes(apiKey))))
         { context.Response.StatusCode = 401; return; }
     }
+    if (context.Request.Method == "POST" && context.Request.Headers["X-Sampling-Control"] != "1")
+    { context.Response.StatusCode = 400; return; }
     await next(context);
 });
 // Serve the example viewer after API-key middleware so it follows the same access policy.
@@ -64,6 +67,19 @@ app.MapGet("/health", (DataState state, SampleQueue queue, SecsState secs) => Re
     state.LastArchiveMs, state.ArchiveError,
     secs = new { enabled = options.Secs.Enabled, secs.Connected, secs.Selected, secs.Communicating, secs.Online, secs.LastError }
 }));
+// These controls affect gateway sampling only, never PLC state.
+app.MapGet("/api/connections", (SamplingControl control) => control.Connections.OrderBy(x => x.Key).Select(x => new { id = x.Key, x.Value.State, x.Value.RetryAttempts, x.Value.LastError }));
+app.MapPost("/api/controllers/{id}/retry", (string id, SamplingControl control) =>
+{
+    if (!controllerMap.ContainsKey(id)) return Results.NotFound();
+    control.Retry(id);
+    return Results.Accepted(value: new { state = "Restart requested" });
+});
+app.MapPost("/api/sampling/restart", (SamplingControl control) =>
+{
+    control.RestartAll(controllerMap.Keys);
+    return Results.Accepted(value: new { state = "Restart requested" });
+});
 app.MapGet("/api/status", (DataState state) => state.Controllers.Values.OrderBy(c => c.Id));
 app.MapGet("/api/controllers", (DataState state) => options.Controllers.Select(c => new
 {
