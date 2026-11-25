@@ -205,6 +205,12 @@ std::uint64_t ArchiveQueue::request_ticket() {
     std::lock_guard lock(mutex_);
     return next_ticket_++;
 }
+void ArchiveQueue::cancel_ticket(std::uint64_t ticket) {
+    std::lock_guard lock(mutex_);
+    if (ticket < turn_) return;
+    cancelled_.insert(ticket);
+    while (cancelled_.erase(turn_)) ++turn_;
+}
 bool ArchiveQueue::try_push(const std::vector<Sample> &samples, std::uint64_t ticket) {
     std::lock_guard lock(mutex_);
     if (closing_ || failed_)
@@ -214,6 +220,7 @@ bool ArchiveQueue::try_push(const std::vector<Sample> &samples, std::uint64_t ti
     queue_.push_back(samples);
     size_ += samples.size();
     ++turn_;
+    while (cancelled_.erase(turn_)) ++turn_;
     changed_.notify_one();
     return true;
 }

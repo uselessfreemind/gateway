@@ -14,6 +14,7 @@ class Engine {
     std::vector<std::vector<std::vector<std::size_t>>> plans_;
     std::vector<std::jthread> threads_;
     std::vector<std::shared_ptr<PlcClient>> clients_;
+    std::vector<std::shared_ptr<std::atomic<std::uint64_t>>> generations_;
     std::vector<std::shared_ptr<asio::steady_timer>> timers_;
     std::shared_ptr<HsmsServer> hsms_;
     std::atomic<bool> stopping_{false};
@@ -29,6 +30,8 @@ class Engine {
     ~Engine();
     void start();
     void stop();
+    void retry(const std::string &controller);
+    void restart_sampling();
     Json snapshot(const std::string &controller = "") const;
     Json history(const std::string &c, const std::string &t, std::int64_t from, std::int64_t to, int limit,
                  std::int64_t after) {

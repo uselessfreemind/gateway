@@ -29,6 +29,7 @@ void Engine::start() {
         auto client = make_plc(executor, config_.controllers[i]);
         auto timer = std::make_shared<asio::steady_timer>(executor);
         clients_.push_back(client);
+        generations_.push_back(std::make_shared<std::atomic<std::uint64_t>>(0));
         timers_.push_back(timer);
         {
             std::lock_guard lock(state_.mutex);
@@ -63,6 +64,21 @@ void Engine::start() {
     }
     for (unsigned i = 0; i < config_.io_threads; ++i)
         threads_.emplace_back([this] { io_.run(); });
+}
+void Engine::retry(const std::string &controller) {
+    if (stopping_) throw std::logic_error("Engine is stopped");
+    for (std::size_t i = 0; i < config_.controllers.size(); ++i) {
+        if (config_.controllers[i].id != controller) continue;
+        auto generation = generations_.at(i);
+        auto client = clients_.at(i);
+        auto timer = timers_.at(i);
+        asio::post(timer->get_executor(), [client, timer, generation] { ++*generation; client->close(); timer->cancel(); });
+        return;
+    }
+    throw std::invalid_argument("Unknown controller");
+}
+void Engine::restart_sampling() {
+    for (const auto &c : config_.controllers) retry(c.id);
 }
 void Engine::stop() {
     if (!started_)
@@ -110,12 +126,34 @@ asio::awaitable<void> Engine::poll(std::size_t index, std::shared_ptr<PlcClient>
     auto interval = std::chrono::milliseconds(c.interval_ms);
     auto due = Clock::now() + std::chrono::microseconds((index * 997) % 10000);
     Status status;
+    std::uint64_t generation = 0;
+    unsigned failures = 0;
+    asio::error_code timer_error;
     try {
         while (!stopping_) {
+            if (generation != generations_[index]->load()) {
+                generation = generations_[index]->load();
+                client->close();
+                failures = 0;
+                status.connection = "Connecting";
+                status.retry_attempts = 0;
+                status.connection_error.clear();
+                due = Clock::now();
+                std::lock_guard lock(state_.mutex);
+                state_.controllers[c.id] = status;
+            }
+            if (failures >= 4) {
+                timer->expires_after(std::chrono::seconds(1));
+                co_await timer->async_wait(asio::redirect_error(asio::use_awaitable, timer_error));
+                continue;
+            }
             timer->expires_at(due);
-            co_await timer->async_wait(asio::use_awaitable);
+            co_await timer->async_wait(asio::redirect_error(asio::use_awaitable, timer_error));
             if (stopping_)
                 break;
+            if (generation != generations_[index]->load()) continue;
+            status.retry_attempts = failures;
+            { std::lock_guard lock(state_.mutex); state_.controllers[c.id] = status; }
             auto began = Clock::now();
             status.jitter_ms = std::chrono::duration<double, std::milli>(began - due).count();
             status.last_attempt = utc_ms();
@@ -136,6 +174,8 @@ asio::awaitable<void> Engine::poll(std::size_t index, std::shared_ptr<PlcClient>
                             reads.push_back({c.id, t.id, t.svid, utc_ms(), {}, "Bad", ex.what()});
                         }
                         interrupted = true;
+                        status.connection_error = ex.what();
+                        client->close();
                     }
                 } else
                     for (auto i : batch) {
@@ -170,6 +210,18 @@ asio::awaitable<void> Engine::poll(std::size_t index, std::shared_ptr<PlcClient>
             }
             if (stopping_)
                 break;
+            if (generation != generations_[index]->load()) continue;
+            if (interrupted) {
+                ++failures;
+                status.connection = failures >= 4 ? "Aborted" : "Reconnecting";
+                status.retry_attempts = std::min(3u, failures - 1);
+            } else {
+                failures = 0;
+                status.connection = "Connected";
+                status.retry_attempts = 0;
+                status.connection_error.clear();
+            }
+            { std::lock_guard lock(state_.mutex); state_.controllers[c.id] = status; }
             // Never block an I/O thread on disk. Backpressure yields this controller's coroutine.
             {
                 std::lock_guard lock(state_.mutex);
@@ -178,6 +230,7 @@ asio::awaitable<void> Engine::poll(std::size_t index, std::shared_ptr<PlcClient>
             }
             auto ticket = queue_.request_ticket();
             while (!queue_.try_push(samples, ticket)) {
+                if (generation != generations_[index]->load()) { queue_.cancel_ticket(ticket); break; }
                 if (stopping_)
                     break;
                 {
@@ -189,10 +242,11 @@ asio::awaitable<void> Engine::poll(std::size_t index, std::shared_ptr<PlcClient>
                     }
                 }
                 timer->expires_after(std::chrono::milliseconds(5));
-                co_await timer->async_wait(asio::use_awaitable);
+                co_await timer->async_wait(asio::redirect_error(asio::use_awaitable, timer_error));
             }
             if (stopping_)
                 break;
+            if (generation != generations_[index]->load()) continue;
             ++status.scans;
             status.scan_ms = std::chrono::duration<double, std::milli>(Clock::now() - began).count();
             auto next = due + interval;
@@ -206,7 +260,7 @@ asio::awaitable<void> Engine::poll(std::size_t index, std::shared_ptr<PlcClient>
                 std::lock_guard lock(state_.mutex);
                 state_.controllers[c.id] = status;
             }
-            due = next;
+            due = failures > 0 ? Clock::now() + std::chrono::seconds(1) : next;
         }
     } catch (const asio::system_error &) {
         if (!stopping_)
@@ -233,6 +287,9 @@ Json Engine::snapshot(const std::string &filter) const {
         auto s = it == state_.controllers.end() ? Status{} : it->second;
         out["controllers"].push_back({{"id", c.id},
                                       {"intervalMs", c.interval_ms},
+                                      {"connectionState", s.connection},
+                                      {"retryAttempts", s.retry_attempts},
+                                      {"connectionError", s.connection_error},
                                       {"tagCount", c.tags.size()},
                                       {"scans", s.scans},
                                       {"failedReads", s.failed_reads},
@@ -255,6 +312,8 @@ Json Engine::snapshot(const std::string &filter) const {
             }
             Json sample = v;
             sample["unit"] = t.unit;
+            sample["address"] = t.address;
+            sample["analogue"] = t.type != Type::boolean;
             out["samples"].push_back(std::move(sample));
         }
     }

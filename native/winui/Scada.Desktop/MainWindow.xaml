@@ -1,7 +1,7 @@
 <Window x:Class="Scada.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Omron SCADA">
   <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="24" RowSpacing="16">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel Spacing="4"><TextBlock Text="Omron SCADA" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="Read-only controller monitoring • 10 ms scan target" Opacity="0.7"/></StackPanel>
+    <StackPanel Spacing="4"><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Retry selected controller" Click="Retry_Click"/><Button Content="Restart all sampling" Click="Restart_Click"/></StackPanel><TextBlock Text="Omron SCADA" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="Read-only controller monitoring • 10 ms scan target" Opacity="0.7"/></StackPanel>
     <Grid Grid.Row="1" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBox x:Name="ConfigPath" PlaceholderText="Full path to site JSON configuration" AutomationProperties.Name="Configuration path"/>
       <Button x:Name="StartButton" Grid.Column="1" Content="Start site" Click="Start_Click"/><Button x:Name="DemoButton" Grid.Column="2" Content="Run demo" Click="Demo_Click"/><Button x:Name="StopButton" Grid.Column="3" Content="Stop" Click="Stop_Click" IsEnabled="False"/>
@@ -10,7 +10,7 @@
     <Grid Grid.Row="3" ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Grid RowSpacing="8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <TextBlock Text="CONTROLLERS" FontWeight="SemiBold"/><ComboBox Grid.Row="1" x:Name="ControllerPicker" HorizontalAlignment="Stretch" SelectionChanged="Controller_Changed" PlaceholderText="Controller"/>
-        <ListView Grid.Row="2" x:Name="ValuesList" SelectionMode="None" AutomationProperties.Name="Current tag values"/>
+        <StackPanel Grid.Row="2"><ScrollViewer MaxHeight="180"><TextBlock x:Name="ConnectionsSummary" TextWrapping="Wrap"/></ScrollViewer><ListView Height="350" x:Name="ValuesList" SelectionMode="None" AutomationProperties.Name="Current tag values"/></StackPanel>
       </Grid>
       <Grid Grid.Column="1" RowSpacing="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="TAG TREND" FontWeight="SemiBold" VerticalAlignment="Center"/><ComboBox x:Name="TagPicker" MinWidth="180" SelectionChanged="Tag_Changed" PlaceholderText="Tag"/><ComboBox x:Name="RangePicker" SelectedIndex="0" SelectionChanged="Tag_Changed"><ComboBoxItem Content="Last minute"/><ComboBoxItem Content="Last hour"/><ComboBoxItem Content="Last day"/><ComboBoxItem Content="Last month"/></ComboBox></StackPanel>

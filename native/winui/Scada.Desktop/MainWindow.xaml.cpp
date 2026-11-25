@@ -176,6 +176,17 @@ fire_and_forget MainWindow::StopAsync() {
         }
     });
 }
+void MainWindow::Retry_Click(IInspectable const &, RoutedEventArgs const &) {
+    if (!engine_ || starting_ || !ControllerPicker().SelectedItem()) return;
+    auto id = to_string(unbox_value<hstring>(ControllerPicker().SelectedItem()));
+    if (scada_retry(engine_->handle, id.c_str()) != 0) Error(to_hstring(scada_last_error()));
+    else { ++generation_; RefreshAsync(); }
+}
+void MainWindow::Restart_Click(IInspectable const &, RoutedEventArgs const &) {
+    if (!engine_ || starting_) return;
+    if (scada_restart_sampling(engine_->handle) != 0) Error(to_hstring(scada_last_error()));
+    else { ++generation_; RefreshAsync(); }
+}
 void MainWindow::Controller_Changed(IInspectable const &, SelectionChangedEventArgs const &) {
     if (changing_)
         return;
@@ -256,8 +267,10 @@ void MainWindow::Apply(JsonObject const &snapshot, JsonArray const &trend) {
     }
     auto selected =
         ControllerPicker().SelectedItem() ? unbox_value<hstring>(ControllerPicker().SelectedItem()) : L"";
+    std::wostringstream connections;
     for (auto const &item : controllers) {
         auto c = item.GetObject();
+        connections << c.GetNamedString(L"id").c_str() << L": " << c.GetNamedString(L"connectionState").c_str() << L" (" << c.GetNamedNumber(L"retryAttempts") << L"/3 retries)\n";
         if (c.GetNamedString(L"id") == selected) {
             std::wostringstream line;
             line << L"Target: " << c.GetNamedNumber(L"intervalMs") << L" ms  •  Last scan: "
@@ -267,17 +280,18 @@ void MainWindow::Apply(JsonObject const &snapshot, JsonArray const &trend) {
             ScanSummary().Text(line.str());
         }
     }
+    ConnectionsSummary().Text(connections.str());
     ValuesList().Items().Clear();
     auto samples = snapshot.GetNamedArray(L"samples");
     auto fillTags = TagPicker().Items().Size() == 0;
     for (auto const &item : samples) {
         auto s = item.GetObject();
         auto id = s.GetNamedString(L"tag");
-        if (fillTags)
+        if (fillTags && s.GetNamedBoolean(L"analogue"))
             TagPicker().Items().Append(box_value(id));
         auto value = s.GetNamedValue(L"value");
         std::wostringstream line;
-        line << id.c_str() << L"   ";
+        line << id.c_str() << L" [" << s.GetNamedString(L"address").c_str() << L"]   ";
         if (value.ValueType() == JsonValueType::Number)
             line << value.GetNumber();
         else

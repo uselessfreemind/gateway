@@ -17,6 +17,8 @@ typedef void *scada_handle;
 SCADA_API scada_handle scada_open(const char *configuration_path);
 SCADA_API scada_handle scada_demo(unsigned controllers, unsigned tags, int interval_ms,
                                   const char *database_path);
+SCADA_API int scada_retry(scada_handle handle, const char *controller);
+SCADA_API int scada_restart_sampling(scada_handle handle);
 SCADA_API int scada_stop(scada_handle handle);
 SCADA_API void scada_close(scada_handle handle);
 SCADA_API char *scada_snapshot(scada_handle handle, const char *controller);

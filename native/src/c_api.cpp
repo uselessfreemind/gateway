@@ -56,6 +56,14 @@ scada_handle scada_demo(unsigned controllers, unsigned tags, int interval, const
         return nullptr;
     }
 }
+int scada_retry(scada_handle h, const char *controller) {
+    try { error.clear(); if (!controller) throw std::invalid_argument("Missing controller"); engine(h).retry(controller); return 0; }
+    catch (const std::exception &e) { error = e.what(); return -1; }
+}
+int scada_restart_sampling(scada_handle h) {
+    try { error.clear(); engine(h).restart_sampling(); return 0; }
+    catch (const std::exception &e) { error = e.what(); return -1; }
+}
 int scada_stop(scada_handle h) {
     try {
         engine(h).stop();

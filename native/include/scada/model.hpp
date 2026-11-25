@@ -60,6 +60,8 @@ struct Sample {
     std::string quality{"Good"}, error;
 };
 struct Status {
+    std::string connection{"Connecting"}, connection_error;
+    unsigned retry_attempts{};
     std::uint64_t scans{}, failed_reads{}, missed_deadlines{};
     double scan_ms{}, jitter_ms{};
     std::int64_t last_attempt{}, last_success{};

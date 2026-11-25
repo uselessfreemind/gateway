@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <deque>
 #include <thread>
+#include <set>
 struct sqlite3;
 namespace scada {
 class Archive {
@@ -31,6 +32,7 @@ class ArchiveQueue {
     std::deque<std::vector<Sample>> queue_;
     std::size_t size_{};
     std::uint64_t next_ticket_{}, turn_{};
+    std::set<std::uint64_t> cancelled_;
     bool closing_{}, failed_{};
     std::jthread writer_;
     void run();
@@ -39,6 +41,7 @@ class ArchiveQueue {
     ArchiveQueue(Archive &archive, SharedState &state, std::size_t capacity);
     ~ArchiveQueue();
     std::uint64_t request_ticket();
+    void cancel_ticket(std::uint64_t ticket);
     bool try_push(const std::vector<Sample> &samples, std::uint64_t ticket);
     std::size_t size();
     void finish();

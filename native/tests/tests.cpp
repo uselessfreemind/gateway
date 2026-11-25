@@ -94,7 +94,11 @@ int main() {
             SharedState queue_state;
             {
                 ArchiveQueue queue(archive, queue_state, 1000);
+                auto abandoned = queue.request_ticket();
+                auto later_abandoned = queue.request_ticket();
                 auto first = queue.request_ticket();
+                queue.cancel_ticket(later_abandoned);
+                queue.cancel_ticket(abandoned);
                 auto second = queue.request_ticket();
                 std::vector<Sample> sample{{"c", "t", 1, now, 30, "Good", ""}};
                 REQUIRE(!queue.try_push(sample, second));
