@@ -51,7 +51,9 @@ app.Use(async (context, next) =>
         if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), SHA256.HashData(Encoding.UTF8.GetBytes(apiKey))))
         { context.Response.StatusCode = 401; return; }
     }
-    if (context.Request.Method == "POST" && context.Request.Headers["X-Sampling-Control"] != "1")
+    if (context.Request.Method == "POST" &&
+        (context.Request.Path == "/api/sampling/restart" || context.Request.Path.StartsWithSegments("/api/controllers")) &&
+        context.Request.Headers["X-Sampling-Control"] != "1")
     { context.Response.StatusCode = 400; return; }
     await next(context);
 });
