@@ -32,12 +32,12 @@ public class SamplingControlTests
             }
             catch (OperationCanceledException) { }
         });
-        var options = new GatewayOptions { QueueCapacity = 1000, Controllers = [new ControllerOptions
+        var options = new GatewayOptions { QueueCapacity = 1000, Controllers = Enumerable.Range(0, 2).Select(i => new ControllerOptions
         {
-            Id = "plc", Host = "127.0.0.1", Port = ((IPEndPoint)socket.Client.LocalEndPoint!).Port,
+            Id = "plc" + i, Host = "127.0.0.1", Port = ((IPEndPoint)socket.Client.LocalEndPoint!).Port,
             PollIntervalMs = 50, TimeoutMs = 50,
-            Tags = [new TagOptions { Id = "pressure", Address = "D:0", Svid = 1, Type = TagType.UInt16 }]
-        }] };
+            Tags = [new TagOptions { Id = "pressure", Address = "D:0", Svid = (uint)i + 1, Type = TagType.UInt16 }]
+        }).ToList() };
         var state = new DataState(); var control = new SamplingControl();
         using var service = new AcquisitionService(options, new SampleQueue(options), state, control, NullLogger<AcquisitionService>.Instance);
         async Task Until(Func<bool> predicate)
@@ -48,15 +48,16 @@ public class SamplingControlTests
         await service.StartAsync(default);
         try
         {
-            await Until(() => control.Connections.TryGetValue("plc", out var s) && s.State == "Aborted");
-            Assert.Equal(4, Volatile.Read(ref requests));
-            Assert.Equal(3, control.Connections["plc"].RetryAttempts);
-            await Task.Delay(250); Assert.Equal(4, Volatile.Read(ref requests));
-            Volatile.Write(ref respond, true); control.Retry("plc");
-            await Until(() => control.Connections["plc"].State == "Connected");
-            Assert.Equal(0, control.Connections["plc"].RetryAttempts);
-            control.RestartAll(["plc"]);
-            await Until(() => control.Connections["plc"].State == "Connected");
+            await Until(() => control.Connections.Count == 2 && control.Connections.Values.All(s => s.State == "Aborted"));
+            Assert.Equal(8, Volatile.Read(ref requests));
+            Assert.Equal(3, control.Connections["plc0"].RetryAttempts);
+            await Task.Delay(250); Assert.Equal(8, Volatile.Read(ref requests));
+            Volatile.Write(ref respond, true); control.Retry("plc0");
+            await Until(() => control.Connections["plc0"].State == "Connected");
+            Assert.Equal(0, control.Connections["plc0"].RetryAttempts);
+            Assert.Equal("Aborted", control.Connections["plc1"].State);
+            control.RestartAll(["plc0", "plc1"]);
+            await Until(() => control.Connections.Values.All(s => s.State == "Connected"));
             Assert.Equal(42d, state.Latest[1].Value);
         }
         finally { await service.StopAsync(default); stop.Cancel(); await simulator; }
