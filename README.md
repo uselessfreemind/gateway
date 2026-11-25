@@ -67,8 +67,10 @@ dotnet test Gateway.sln
 python scripts/smoke.py --postgres
 ```
 
-See [API details](docs/api.md) and [validation results](docs/validation.md). No live-data UI integration, physical-hardware acceptance, full SEMI E30 certification or production throughput guarantee is claimed.
+See [API details](docs/api.md) and [validation results](docs/validation.md). No physical-hardware acceptance, full SEMI E30 certification or production throughput guarantee is claimed.
 
 ## Example browser viewer
 
-After starting the service, open `http://127.0.0.1:5080/`. The read-only System B process overview includes a **Trend** button opening three pages: values, flow charts, and pressure/temperature charts. All displayed data is illustrative; the viewer is not yet connected to PLC APIs. See [viewer usage and access policy](docs/web-viewer.md).
+After starting the service, open `http://127.0.0.1:5080/`. The read-only System B process overview includes a **Trend** button opening three pages: values, flow charts, and pressure/temperature charts. The System B illustration remains simulated. The controller monitor and analogue trend register use real configured acquisition data, with per-controller manual retry and global sampling restart. See [viewer usage and access policy](docs/web-viewer.md).
+
+See [sampling controls and live trends](docs/sampling-controls.md) and the [implemented function inventory](doc/implemented-functions.md).

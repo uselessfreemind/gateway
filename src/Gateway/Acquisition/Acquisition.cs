@@ -38,14 +38,16 @@ public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue
     }
     private async Task Poll(ControllerOptions c, CancellationToken shutdown)
     {
+        var firstSession = true;
         while (!shutdown.IsCancellationRequested)
         {
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(shutdown, control.Token(c.Id));
-            try { await PollSession(c, lifetime.Token); }
+            try { await PollSession(c, lifetime.Token, firstSession); }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            firstSession = false;
         }
     }
-    private async Task PollSession(ControllerOptions c, CancellationToken token)
+    private async Task PollSession(ControllerOptions c, CancellationToken token, bool stagger)
     {
         IControllerClient CreateClient() => c.Protocol == ControllerProtocol.FinsUdp ? new FinsClient(c) : new EtherNetIpClient(c);
         var client = CreateClient();
@@ -58,7 +60,7 @@ public sealed class AcquisitionService(GatewayOptions options, SampleQueue queue
         try
         {
             // Spread connection establishment rather than opening 500 sessions at once.
-            await Task.Delay(Random.Shared.Next(Math.Min(c.PollIntervalMs, 1000)), token);
+            if (stagger) await Task.Delay(Random.Shared.Next(Math.Min(c.PollIntervalMs, 1000)), token);
             while (!token.IsCancellationRequested)
             {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
